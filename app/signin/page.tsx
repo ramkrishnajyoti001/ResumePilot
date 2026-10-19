@@ -6,8 +6,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { canUseLocalDemo, startLocalDemoSession } from "@/lib/auth/local-demo";
 
-const OTP_LENGTH = 8;
-
 export default function SigninPage() {
   const router = useRouter();
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
@@ -20,11 +18,8 @@ export default function SigninPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [otp, setOtp] = useState("");
-  const [showOtp, setShowOtp] = useState(false);
 
   const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -59,61 +54,28 @@ export default function SigninPage() {
 
     setLoading(true);
     try {
-    const supabase = getSupabase();
-
-    if (showOtp) {
-      const cleanOtp = otp.replace(/\D/g, "");
-      if (cleanOtp.length !== OTP_LENGTH) {
-        setError(`Please enter the ${OTP_LENGTH}-digit code sent to your email.`);
+      if (!password) {
+        setError("Please enter your password.");
         return;
       }
 
-      const { data, error: signinError } = await supabase.auth.verifyOtp({
+      const supabase = getSupabase();
+      const { data, error: signinError } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
-        token: cleanOtp,
-        type: "email",
+        password,
       });
 
-      if (signinError || !data.user) {
-        setError(signinError?.message || "Unable to verify this code. Please try again.");
+      if (signinError) {
+        setError(signinError.message);
+        return;
+      }
+
+      if (!data.user) {
+        setError("Unable to sign in. Please try again.");
         return;
       }
 
       finishSignin();
-      return;
-    }
-
-    if (!password) {
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: cleanEmail,
-        options: { shouldCreateUser: false },
-      });
-      if (otpError) {
-        setError(otpError.message);
-        return;
-      }
-
-      setShowOtp(true);
-      setNotice(`An ${OTP_LENGTH}-digit sign-in code has been sent to your email.`);
-      return;
-    }
-
-    const { data, error: signinError } = await supabase.auth.signInWithPassword({
-      email: cleanEmail,
-      password,
-    });
-
-    if (signinError) {
-      setError(signinError.message);
-      return;
-    }
-
-    if (!data.user) {
-      setError("Unable to sign in. Please try again.");
-      return;
-    }
-
-    finishSignin();
     } catch {
       setError("We could not reach the account service. Check Supabase, or use the local workspace while developing.");
     } finally {
@@ -126,36 +88,6 @@ export default function SigninPage() {
     const redirect = params.get("redirect");
     router.replace(redirect && redirect.startsWith("/") && !redirect.startsWith("//") ? redirect : "/dashboard");
     router.refresh();
-  }
-
-  async function resendSigninCode() {
-    setError("");
-    setNotice("");
-
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail) {
-      setError("Please enter your email address first.");
-      return;
-    }
-
-    setResending(true);
-    try {
-      const { error: otpError } = await getSupabase().auth.signInWithOtp({
-        email: cleanEmail,
-        options: { shouldCreateUser: false },
-      });
-
-      if (otpError) {
-        setError(otpError.message);
-        return;
-      }
-
-      setNotice(`A new ${OTP_LENGTH}-digit sign-in code has been sent to your email.`);
-    } catch {
-      setError("We could not reach the account service. Please try again after Supabase is available.");
-    } finally {
-      setResending(false);
-    }
   }
 
   async function sendPasswordReset() {
@@ -237,10 +169,9 @@ export default function SigninPage() {
                 />
               </div>
 
-              {!showOtp ? (
-                <div>
+              <div>
                   <div className="mb-2 flex items-center justify-between">
-                    <label className="text-sm font-semibold">Password <span className="font-normal text-slate-500">(optional)</span></label>
+                    <label className="text-sm font-semibold">Password</label>
 
                     <button
                       type="button"
@@ -256,27 +187,12 @@ export default function SigninPage() {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Leave blank to receive an email code"
+                    placeholder="Enter your password"
                     autoComplete="current-password"
+                    required
                     className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 outline-none transition placeholder:text-slate-500 focus:border-blue-500"
                   />
-                  <p className="mt-2 text-xs leading-5 text-slate-500">New to ResumePilot? Leave this blank and we’ll email you a sign-in code.</p>
                 </div>
-              ) : (
-                <div>
-                  <div className="mb-2 flex items-center justify-between"><label className="text-sm font-semibold">Email verification code</label><button type="button" onClick={() => { setShowOtp(false); setOtp(""); setError(""); }} className="text-xs font-semibold text-blue-400 hover:text-blue-300">Use password instead</button></div>
-                  <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={OTP_LENGTH} value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, OTP_LENGTH))} placeholder="12345678" className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 tracking-[0.35em] outline-none transition placeholder:tracking-normal placeholder:text-slate-500 focus:border-blue-500" required />
-                  <p className="mt-2 text-xs leading-5 text-slate-500">We sent an 8-digit code to {email}.</p>
-                  <button
-                    type="button"
-                    onClick={resendSigninCode}
-                    disabled={resending || loading}
-                    className="mt-2 text-xs font-semibold text-blue-400 hover:text-blue-300 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {resending ? "Sending code…" : "Resend code"}
-                  </button>
-                </div>
-              )}
 
               {error && (
                 <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -295,7 +211,7 @@ export default function SigninPage() {
                 disabled={loading}
                 className="w-full rounded-xl bg-blue-600 px-5 py-3.5 text-sm font-bold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "Please wait…" : showOtp ? "Verify and sign in" : password ? "Sign in with password" : "Email me a sign-in code"}
+                {loading ? "Please wait…" : "Sign in"}
               </button>
             </form>
 

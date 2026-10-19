@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "../../lib/supabase/client";
 import { canUseLocalDemo, startLocalDemoSession } from "@/lib/auth/local-demo";
 
-const OTP_LENGTH = 8;
-
 export default function SignupPage() {
   const router = useRouter();
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
@@ -19,13 +17,9 @@ export default function SignupPage() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
-
-  const [showOtp, setShowOtp] = useState(false);
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
   const [localDemoAvailable, setLocalDemoAvailable] = useState(false);
 
   useEffect(() => {
@@ -33,11 +27,10 @@ export default function SignupPage() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  async function sendOtp(e: FormEvent<HTMLFormElement>) {
+  async function signUp(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
     setError("");
-    setMessage("");
 
     const cleanName = name.trim();
     const cleanEmail = email.trim().toLowerCase();
@@ -52,16 +45,19 @@ export default function SignupPage() {
       return;
     }
 
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long.");
+      return;
+    }
+
     setLoading(true);
     try {
       const supabase = getSupabase();
-      const { error } = await supabase.auth.signInWithOtp({
+      const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
+        password,
         options: {
-          shouldCreateUser: true,
-          data: {
-            full_name: cleanName,
-          },
+          data: { full_name: cleanName },
         },
       });
 
@@ -70,106 +66,27 @@ export default function SignupPage() {
         return;
       }
 
-      setShowOtp(true);
-      setMessage(`A ${OTP_LENGTH}-digit verification code has been sent to your email.`);
-    } catch {
-      setError("We could not reach the account service. Use the local workspace below while developing.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function verifyOtp(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-
-    setError("");
-    setMessage("");
-
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanOtp = otp.replace(/\D/g, "");
-
-if (cleanOtp.length !== OTP_LENGTH) {
-  setError(`Please enter the complete ${OTP_LENGTH}-digit code. Current digits: ${cleanOtp.length}`);
-  return;
-}
-
-    const finalOtp = cleanOtp;
-
-    setLoading(true);
-    try {
-    const supabase = getSupabase();
-
-    const { data, error } = await supabase.auth.verifyOtp({
-      email: cleanEmail,
-      token: finalOtp,
-      type: "email",
-    });
-
-    if (error) {
-      setError(error.message);
-      return;
-    }
-
-    if (!data.session || !data.user) {
-      setError("Verification completed, but no login session was created.");
-      return;
-    }
-
-    // Keep the basic account profile in sync when the optional profiles table exists.
-    // A profile-sync error should never block a successful account verification.
-    await supabase.from("profiles").upsert(
-      {
-        id: data.user.id,
-        full_name: name.trim(),
-        email: cleanEmail,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "id" }
-    );
-
-    router.replace("/dashboard");
-    router.refresh();
-    } catch {
-      setError("We could not reach the account service. Use the local workspace below while developing.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function resendOtp() {
-    setError("");
-    setMessage("");
-
-    const cleanEmail = email.trim().toLowerCase();
-
-    if (!cleanEmail) {
-      setError("Please enter your email first.");
-      return;
-    }
-
-    setResending(true);
-    try {
-      const supabase = getSupabase();
-      const { error } = await supabase.auth.signInWithOtp({
-        email: cleanEmail,
-        options: {
-          shouldCreateUser: true,
-          data: {
-            full_name: name.trim(),
-          },
-        },
-      });
-
-      if (error) {
-        setError(error.message);
+      if (!data.session || !data.user) {
+        setError("Account created, but no session was returned. Check Supabase email confirmation settings and try signing in.");
         return;
       }
 
-      setMessage("A new OTP has been sent to your email.");
+      await supabase.from("profiles").upsert(
+        {
+          id: data.user.id,
+          full_name: cleanName,
+          email: cleanEmail,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
+
+      router.replace("/dashboard");
+      router.refresh();
     } catch {
-      setError("We could not reach the account service. Use the local workspace below while developing.");
+      setError("We could not reach the account service. Please try again.");
     } finally {
-      setResending(false);
+      setLoading(false);
     }
   }
 
@@ -193,16 +110,15 @@ if (cleanOtp.length !== OTP_LENGTH) {
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-7 shadow-2xl backdrop-blur">
-          {!showOtp ? (
-            <>
+          <>
               <div className="mb-6">
                 <h1 className="text-2xl font-semibold">Create account</h1>
                 <p className="mt-1 text-sm text-gray-400">
-                  Enter your details to continue.
+                  Create an account with your email and password.
                 </p>
               </div>
 
-              <form onSubmit={sendOtp} className="space-y-5">
+              <form onSubmit={signUp} className="space-y-5">
                 <div>
                   <label
                     htmlFor="name"
@@ -241,6 +157,27 @@ if (cleanOtp.length !== OTP_LENGTH) {
                   />
                 </div>
 
+                <div>
+                  <label
+                    htmlFor="password"
+                    className="mb-2 block text-sm text-gray-300"
+                  >
+                    Password
+                  </label>
+
+                  <input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    autoComplete="new-password"
+                    minLength={8}
+                    required
+                    className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm outline-none transition focus:border-cyan-400"
+                  />
+                </div>
+
                 {error && (
                   <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
                     {error}
@@ -252,7 +189,7 @@ if (cleanOtp.length !== OTP_LENGTH) {
                   disabled={loading}
                   className="w-full rounded-xl bg-cyan-400 px-4 py-3 font-semibold text-black transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {loading ? "Sending OTP..." : "Continue"}
+                  {loading ? "Creating account..." : "Create account"}
                 </button>
               </form>
 
@@ -263,89 +200,7 @@ if (cleanOtp.length !== OTP_LENGTH) {
                   <button type="button" onClick={openLocalWorkspace} className="mt-3 rounded-lg border border-amber-300/30 px-3 py-2 text-xs font-bold text-amber-100 transition hover:bg-amber-300/10">Open local workspace</button>
                 </div>
               )}
-            </>
-          ) : (
-            <>
-              <div className="mb-6 text-center">
-                <h1 className="text-2xl font-semibold">Verify your email</h1>
-
-                <p className="mt-2 text-sm leading-6 text-gray-400">
-                  We sent a {OTP_LENGTH}-digit verification code to
-                </p>
-
-                <p className="mt-1 break-all text-sm font-medium text-cyan-400">
-                  {email}
-                </p>
-              </div>
-
-              <form onSubmit={verifyOtp} className="space-y-5">
-                <div>
-                  <label
-                    htmlFor="otp"
-                    className="mb-2 block text-sm text-gray-300"
-                  >
-                    Verification code
-                  </label>
-
-                  <input
-                    id="otp"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={OTP_LENGTH}
-                    value={otp}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/\D/g, "");
-                      setOtp(value);
-                    }}
-                    placeholder="12345678"
-                  />
-                </div>
-
-                {error && (
-                  <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-                    {error}
-                  </div>
-                )}
-
-                {message && !error && (
-                  <div className="rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-300">
-                    {message}
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={loading || otp.replace(/\D/g, "").length < OTP_LENGTH}
-                  className="w-full rounded-xl bg-cyan-400 px-4 py-3 font-semibold text-black transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loading ? "Verifying..." : "Verify email"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={resendOtp}
-                  disabled={resending}
-                  className="w-full rounded-xl border border-white/10 px-4 py-3 text-sm text-gray-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {resending ? "Sending..." : "Resend OTP"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowOtp(false);
-                    setOtp("");
-                    setError("");
-                    setMessage("");
-                  }}
-                  className="w-full text-sm text-gray-500 transition hover:text-gray-300"
-                >
-                  Change email
-                </button>
-              </form>
-            </>
-          )}
+          </>
         </div>
 
         <p className="mt-6 text-center text-sm text-gray-500">
