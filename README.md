@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ResumePilot
 
-## Getting Started
+ResumePilot is a focused workspace for building role-specific resumes. It gives users one master career profile, reusable resume drafts, job-description keyword matching, an ATS readiness check, and a print-ready resume preview.
 
-First, run the development server:
+## Latest update
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Six original print-ready templates: Modern, Professional, Minimal, Executive, Sidebar, and Creative.
+- A browser-local workspace option for development when Supabase cannot be reached locally. It is never available in production builds.
+- Three spacing modes and six accent-color choices for every template.
+
+## What works today
+
+- Supabase authentication with email code sign-in, password sign-in, account recovery, and protected dashboard routes.
+- A complete master profile: contact details, summary, skills, education, experience, projects, certifications, and achievements.
+- Resume creation, editing, saved history, tailored job descriptions, templates, layouts, and accent colors.
+- ATS and job-match analysis based on the actual saved resume data.
+- Print / Save PDF from the live resume preview.
+- Account basics and skills sync to Supabase; full resume drafts remain in browser storage by design for now.
+
+## Local setup
+
+1. Install dependencies with `npm install`.
+2. Create `.env.local` with:
+
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=your-project-url
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+   ```
+
+3. Run the development server:
+
+   ```bash
+   npm run dev
+   ```
+
+4. Open `http://localhost:3000`.
+
+The Supabase project should provide `profiles` and `profile_skills` tables with policies that permit a user to access only their own rows. The application remains usable for local resume drafting if profile syncing is unavailable.
+
+## Deploy to Vercel
+
+1. Push the `frontend` folder to a Git repository, or use it as the repository root.
+2. In Vercel, select **Add New → Project** and import the repository.
+3. If the repository contains this workspace structure, set **Root Directory** to `frontend`.
+4. Add these environment variables for Production, Preview, and Development:
+
+   ```text
+   NEXT_PUBLIC_SUPABASE_URL
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+   ```
+
+5. Deploy. Vercel will run `npm run build` automatically.
+
+Before sharing the public URL, restore the Supabase project and configure the Auth redirect URLs for your Vercel domain:
+
+```text
+https://your-domain.vercel.app/auth/callback
+https://your-domain.vercel.app/reset-password
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Use Node.js 20.9 or later in other hosting providers. Copy `.env.example` to `.env.local` for local setup. Resume drafts are browser-local today, so they will not yet sync across devices.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Quality checks
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run lint
+npm run build
+```
 
-## Learn More
+## Next product step
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Move saved resume drafts and the extended profile sections to Supabase with row-level security, then add document import/export storage. That will make a user’s complete workspace available across devices.
